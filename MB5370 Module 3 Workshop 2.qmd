@@ -1,0 +1,197 @@
+---
+title: "MB5370 Module 3 Workshop 2"
+author: "Caitlin Buckle"
+format: html
+editor: visual
+---
+
+Copied small dataset from repository 
+
+```bash
+cat /pvol/data/amtp4/*_[012].fastq > amtp4.fastq
+```
+
+Run the assembly - took approx. 2 minutes
+
+```bash
+wtdbg2 -x ont -g 5m -t 4 -i amtp4.fastq -fo amtp4
+wtpoa-cns -t 4 -i amtp4.ctg.lay.gz -fo amtp4.ctg.fa
+```
+
+Inspect the assembly statistics - how good does this assembly look in terms of contiguity and completeness (lecture 6.4)?
+
+```bash
+assembly-stats amtp4.ctg.fa
+```
+
+**ASSEMBLY STATS amtp4**
+Assembly length: 3639639bp
+Number of contigs: 120 contigs
+Largest contig: 143809bp
+N50 = 48273
+
+Run redbean with higher coverage/better coverage depth - using data equivalent to 20 x coverage - started at 11:47am, finished 11:52am 
+
+```bash
+cat /pvol/data/amtp4/*.fastq > amtp4_20x.fastq
+wtdbg2 -x ont -g 5m -t 4 -i amtp4_20x.fastq -fo amtp4_20x
+wtpoa-cns -t 4 -i amtp4_20x.ctg.lay.gz -fo amtp4_20x.ctg.fa
+```
+
+Using assembly-stats to reassess x20 coverage with assembly-stats 
+
+```bash
+assembly-stats amtp4_20x.ctg.fa
+```
+
+**ASSEMBLY STATS amtp4_20**
+
+Assembly length: 6878979bp
+Number of contigs: 89 contigs (number of pieces in the sequence)
+Largest contig: 3344263bp
+N50 = 1764946 
+
+NOTE: to move up a level in your directory use the command "cd .."
+
+Using Flye (alternative assembler) - created and set new working directory, then create symbolic links to same rawdata used for redbean assembly 
+
+Use slurm (queuing system) to run flye in the background - create a shell script file (saved into the flye directory) and copy in the code below 
+
+```
+#!/bin/bash
+#SBATCH --time=60
+#SBATCH --ntasks=4 --mem=4gb
+
+echo "Starting flye in $(pwd) at $(date)"
+
+flye --nano-raw amtp4.fastq --out-dir amtp4 --genome-size 5m --threads 4
+
+echo "Finished flye in $(pwd) at $(date)"
+```
+
+Submit the saved slurm script into the queue 
+``` bash
+sbatch run_flye_small.sh
+```
+
+Shell file submitted to queue, batch job 333 - can use 'squeue' to check the status of your job 
+
+Use assembly-stats to assess contiguity and completeness of the flye_small assembly 
+
+```bash 
+assembly-stats amtp4/assembly.fasta
+```
+**ASSEMBLY STATS amtp4/assembly.fasta**
+
+stats for amtp4/assembly.fasta
+sum = 5164329, n = 77, ave = 67069.21, largest = 368943
+N50 = 119681, n = 16
+N60 = 99421, n = 20
+N70 = 73541, n = 26
+N80 = 48063, n = 35
+N90 = 31251, n = 48
+N100 = 2777, n = 77
+N_count = 0
+Gaps = 0
+
+NOTE: with better assemblies, number of pieces should go down, N50 should go up, largest should go up 
+
+Run flye on the larger data set, using shell file run_flye_large.sh - job 354 
+
+```bash
+sbatch run_flye_large.sh
+```
+
+**ASSEMBLY STATS amtp4_20x/assembly.fasta**
+
+stats for amtp4_20x/assembly.fasta
+sum = 7482688, n = 54, ave = 138568.30, largest = 3378256
+N50 = 1775265, n = 2
+N60 = 1775265, n = 2
+N70 = 113574, n = 3
+N80 = 74047, n = 12
+N90 = 44111, n = 25
+N100 = 4044, n = 54
+N_count = 0
+Gaps = 0
+
+In bandage (for 20x), edge 15 (3367825bp,24.0x depth) and edge 3 (1775265bp, 23.0x depth) are very circular in appearance. 
+
+Checking Assembly Quality with QUAST 
+
+Contig_2 and Contig_15 are largest contigs for my assembly- used in the samtools line to extract
+
+```bash
+samtools faidx ../flye/amtp4_20x/assembly.fasta contig_3 contig_15 > flye_asm/vibrio.fasta 
+```
+
+Repeat the process for the redbean directory 
+
+```bash
+cat ../redbean/amtp4_20x.ctg.fa | bioawk -c fastx '{print $name, length($seq)}' | sort -n -k2
+```
+Largest contig is ctg2 (1764946bp) and ctg1 (3344263bp)
+
+Extract ctg2 and ctg1 using samtools 
+
+```bash
+samtools faidx ../redbean/amtp4_20x.ctg.fa ctg1 ctg2 > redbean_asm/vibrio.fasta
+```
+
+Created symbolic links to original reads 
+```bash
+ln ../flye/amtp4_20x.fastq .
+```
+and reference assembly 
+```bash
+ln -s /pvol/data/amtp4/reference/vibrio .
+```
+
+Run quast 
+
+```bash
+quast -o quast_vibrio redbean_asm/vibrio.fasta flye_asm/vibrio.fasta -L -t 4 --circos --glimmer -r vibrio/vibrio.fna --features  vibrio/vibrio.gff --nanopore amtp4_20x.fastq
+```
+
+Donwloaded quast_vibrio folder, unzipped and viewed report.html and circos/circos.png to examine how well the assemblers worked - both done good job, few areas where reference and assembly are different. Redbean assembly has gaps (seen in Bandage also). 
+
+Mystery Repeat Region 
+
+Copied repeat sequence from Bandage into plain text file (called repeat.fasta) - annotated using prokka 
+
+```bash
+prokka --outdir prokka --prefix repeat repeat.fasta
+```
+
+Examine the tsv file created 
+
+```bash
+cat prokka/repeat.tsv
+```
+
+repeat.tsv shows the presence of key ribosomal RNA parts in bacteria (5S 23S and 16S ribsomal RNA), and then some other tRNA parts. This is consistent with our biological knowledge, as bacteria make lots of RNA and therefore require a lot of ribosomal repeats in the genome (which is what we can see in the repeat.tsv file!)
+
+Genomic arrangement of repeats - we know repeats are present but we don't know how they are arranged in the genome (are they in tandem or dispersed?)
+
+```bash 
+ln -s ../quast/vibrio/vibrio.fna . #link in the data
+minimap2 -x map-ont vibrio.fna repeat.fasta > repeat_vs_genome.paf #use minimap2 to map the DNA sequences
+
+```
+
+Used head to examine the repeat_vs_genome.paf file created by minimap2, then cat to extract columns into a bed formatted file 
+
+```bash
+cat repeat_vs_genome.paf | grep '^repe' | awk -F '\t' '{print $6,$8,$9}' > repeat_locations.bed
+```
+
+The repeat is mostly tandem (repeat_locations.bed file shows 6 chromosomes, first coloumn is start position, second column is end position) - RNA is about ~5000bp which is fairly consistent with the start and end positions in the file. The indiscrepancies or outliers may be due to assembly problems, or specific biological reasons relating to bacterial ribosomal RNA (complicated...). 
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,258 @@
+---
+title: "MB5370 Module 3 Workshop 3"
+author: "Caitlin Buckle"
+format: html
+editor: visual
+---
+
+In this workshop we will assemble a mock metagenome consisting of five bacterial species. This metagenome has been designed to capture some of the key challenges in metagenomic assembly, including variable coverage (some species abundant, others rare - assembling rare taxa is more difficult) and similar sequences (this community contains two vibrio species - similar enough that they are difficult to separate in an assembly)
+
+Created new directory (raw_data) and a symbolic link within the directory to the raw reads file in this directory 
+```bash
+ln -s /pvol/data/metagenome_assembly/reads_R10_0.5.fastq.gz raw_reads.fastq.gz
+```
+
+Starting point - examine the read length distribution in our input data 
+
+```bash
+zcat raw_data/raw_reads.fastq.gz | head -n 40000 | bioawk -c fastx '{print $name,length($seq)}' > read_lengths.txt
+```
+Does say that there is a broken pipe - AI says this is not a problem 
+
+Create an R code chunk to visualise the read lengths 
+
+```{r}
+library(tidyverse)
+
+rl_data <- read_tsv("read_lengths.txt",col_names = c("id","length"), show_col_types = FALSE)
+
+ggplot(rl_data, aes(x=length/1000)) + 
+  geom_histogram(binwidth = 2) +
+  xlab("Read Length Kb") + ylab("Number of Reads")
+```
+
+Plot is right skewed, with most reads between 1 and 50kb in length - now going to summarise with N50 statistic (most often used to summarise genome assemblies but can also be used for summarising read length distributions). Useful as unaffected by having large numbers of tiny reads and instead places emphasis on the longer reads in the data. 
+
+```{r}
+total_len <- sum(rl_data$length) #creating new object 'total_len' and defining as the sum of the lengths within rl_data 
+
+rl_data %>% 
+  arrange(desc(length)) %>% #arrange the reads from longest to shortest
+  mutate(cumsum = cumsum(length)) %>% #create a new column with cumulative sum (cumsum) of read lengths (starting from longest as described above)
+  filter(cumsum>total_len/2) %>% #filtering the reads to find where the cumulative sum (cumsum) surpasses 50% of the total read volume (total_len) - this is the N50!
+  head(n=1)
+
+#N50 of individual reads = 22kb (22322bp length)
+```
+
+N50 of individual reads is ~22kb - we expect the N50 of our assembly to be considerably greater than this 
+
+Using flye as assembler - created shell file (run_flye.sh) in flye directory, and submitted job (batch job 386)
+
+While flye is running - Tabulating chromosome lengths and their corresponding GC content using the bioawk program created in gc.awk (txt file in marine-genomics directory)
+
+Use cat to concatenate all the files together and pipe to send their contents to our bioawk program 
+
+```bash
+cat /pvol/data/mg/refs/*.fna | bioawk -c fastx -f gc.awk
+```
+
+Output: 
+CP003591.1      4681111 0.584631
+CP045504.1      4388462 0.636383
+CP045505.1      51725   0.578966
+AP024165.1      3168162 0.44373
+AP024166.1      1553697 0.438144
+AP024167.1      320083  0.418301
+AP024168.1      221076  0.434733
+CP098033.1      1819821 0.445875
+CP098034.1      3294375 0.447314
+CP098035.1      36224   0.485231
+NZ_CP053351.1   4560973 0.34633
+
+gc.awk output - name, length, gc content 
+
+slurm-386.out finished, new folder in flye called 'mock' with all the required files inside 
+
+Flye reported outputs: 
+    Total length:   18270553
+        Fragments:      40
+        Fragments N50:  1866219 (~186kb) - IMPORTANT: much larger than our individual reads N50 
+        Largest frg:    4681059
+        Scaffolds:      0
+        Mean coverage:  12
+
+From assembly_info.txt - largest config is config_27 (4681059bp, coverage 21x, also circular)
+Circular contigs (from assembly_info.txt) - config_27 (4681059bp), contig_39	(1553714bp), contig_41	(320168bp), contig_40	(221077bp), contig_42	(5088bp) 
+
+Previously used gc.awk to print lengths and GC content for our reference sequences - now do they same for our assembled contigs 
+
+Use gc.awk script to print GC and lengths for the assembly 
+
+```bash
+cat ../flye/mock/assembly.fasta | bioawk -c fastx -f ../gc.awk 
+```
+Run again and send to 'assembly.gc.tsv' file 
+
+```bash
+cat ../flye/mock/assembly.fasta | bioawk -c fastx -f ../gc.awk > assembly.gc.tsv
+```
+
+GC content is in assembly.gc.tsv and coverage depth in assembly_info.txt - read those and join them together using R 
+
+```{r}
+gc <- read_tsv("assembly_check/assembly.gc.tsv",col_names = c("#seq_name","length","GC"))
+info <- read_tsv("flye/mock/assembly_info.txt") 
+```
+
+Both datasets have a #seq_name column so we can join them together using code below 
+
+```{r}
+gc_info <- info %>% 
+  left_join(gc)
+```
+
+Create a histogram by GC content 
+
+```{r}
+gc_info %>% 
+  ggplot(aes(x=GC)) + geom_histogram() + ylab("Number of contigs")
+```
+
+Histogram by GC content shows several peaks - likely corresponds to major groupings of taxonomically distinct lineages within the data 
+
+Create plot of GC vs coverage helps to identify clusters - first filter data to remove contigs with unrealistically high GC content and very high coverage depth (probs repeats)
+
+```{r}
+gc_info %>% 
+  filter(GC<0.8) %>% 
+  filter(cov.<25) %>% 
+  ggplot(aes(x=GC,y=cov.)) + geom_point(aes(size=length)) + ylab("Coverage depth")
+```
+Contig lengths shown through point size, coverage and GC content on x and y axis - Vibrio alfacsensis contigs cluster together etc (look at the table at the top of the workshop manual for expected GC content for each bacteria in our metagenome)
+
+Addings labels - had to install ggrepel package :) only contigs with more than 25x coverage and less than 8-% GC coverage are shown 
+```{r}
+library(ggrepel)
+gc_info %>% 
+  filter(GC<0.8) %>% 
+  filter(cov.<25) %>% 
+  ggplot(aes(x=GC,y=cov.)) + geom_point(aes(size=length)) + geom_label_repel(aes(label=`#seq_name`))
+```
+
+Tools to bin broadly fall into two categories - read binning tools which group the raw (unassembled) reads, or contig binning tools which group assembled contigs. Both cases produce 'bins', which will cntain multiple distinct sequences (reads or contigs) that come the same organism. 
+
+Binning is a very difficult problem and results from binning often contain errors such as placing two sequences together when they come from different taxa (leads to 'contamination') or failing to group sequences that come from the same taxa (lead to fragmentation)
+
+We will perform contig binnings 
+
+New directory (metabat), new input file inside 'depths.txt' 
+
+```bash
+cat ../flye/mock/assembly_info.txt  | grep -v '#' | awk '{OFS="\t";print $1,$3}' > depths.txt
+```
+
+Create a new version of the assembly file in which the contigs have the same order as those in the depths.txt file - using samtools faidx (allows us to extract entries from a fasta file in whatever order we specify)
+
+```bash
+cat depths.txt | awk '{print $1}' | xargs samtools faidx ../flye/mock/assembly.fasta > assembly_ordered.fasta
+```
+
+Run metabat 
+
+```bash
+metabat2 -i assembly_ordered.fasta -a depths.txt --cvExt -o bins/metabat --seed 5
+```
+
+Bins directory will contain multi-fasta files with each of the bins inferred by metabat - quickly inspect using grep command 
+
+```bash
+grep '>' bins/*
+```
+Grep output - 5 bins 
+bins/metabat.1.fa:>contig_24
+bins/metabat.1.fa:>contig_25
+bins/metabat.1.fa:>contig_35
+bins/metabat.2.fa:>contig_6
+bins/metabat.2.fa:>contig_10
+bins/metabat.2.fa:>contig_14
+bins/metabat.2.fa:>contig_19
+bins/metabat.2.fa:>contig_32
+bins/metabat.2.fa:>contig_15
+bins/metabat.3.fa:>contig_16
+bins/metabat.3.fa:>contig_9
+bins/metabat.3.fa:>contig_17
+bins/metabat.3.fa:>contig_7
+bins/metabat.3.fa:>contig_26
+bins/metabat.3.fa:>contig_1
+bins/metabat.3.fa:>contig_18
+bins/metabat.3.fa:>contig_29
+bins/metabat.3.fa:>contig_28
+bins/metabat.3.fa:>contig_38
+bins/metabat.3.fa:>contig_3
+bins/metabat.3.fa:>contig_5
+bins/metabat.4.fa:>contig_20
+bins/metabat.4.fa:>contig_21
+bins/metabat.4.fa:>contig_31
+bins/metabat.4.fa:>contig_4
+bins/metabat.4.fa:>contig_23
+bins/metabat.4.fa:>contig_33
+bins/metabat.4.fa:>contig_13
+bins/metabat.4.fa:>contig_22
+bins/metabat.5.fa:>contig_2
+bins/metabat.5.fa:>contig_39
+bins/metabat.5.fa:>contig_41
+bins/metabat.5.fa:>contig_40
+
+Use checkM to assess quality of our bins 
+
+In new directory (checkm, within Marine-Genomics), copy over bins from metabat
+
+```bash
+cp ../metabat/bins/metabat.*.fa bins/
+```
+
+Metabat failed to include our longest contig in bins - need to extract this contig from our assembly and include it with out metabat bins 
+
+```bash
+samtools faidx ../flye/mock/assembly.fasta contig_39 > bins/contig_39.fa
+```
+
+Run the checkm workflow - create new shell file (run_checkm.sh) and submit with sbatch - batch job 404 
+
+```sbatch
+sbatch run_checkm.sh
+```
+
+checkm_results.txt results 
+Bin Id               Marker lineage            # genomes   # markers   # marker sets    0     1    2    3   4   5+   Completeness   Contamination   Strain heterogeneity  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  metabat.5      f__Vibrionaceae (UID4865)           80         922           367         4    899   17   2   0   0       99.93            1.33              26.09          
+  metabat.4   c__Deltaproteobacteria (UID3217)       62         280           168         33   247   0    0   0   0       85.86            0.00               0.00          
+  metabat.3      f__Vibrionaceae (UID4865)           80         922           367        740   182   0    0   0   0       18.18            0.00               0.00          
+  metabat.2             root (UID1)                 5656         56            24         53    3    0    0   0   0       12.50            0.00               0.00          
+  metabat.1      f__Vibrionaceae (UID4865)           80         922           367        846    76   0    0   0   0        7.48            0.00               0.00          
+  contig_39             root (UID1)                 5656         56            24         56    0    0    0   0   0        0.00            0.00               0.00          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Bin 5 has the highest level of contamination 
+
+Starting to use dataset for Black Band Disease (BBD) - go back into raw_data directory, then make symbolic link to the bbd read data 
+
+```bash
+ln -s /pvol/data/metagenome_assembly/bbd_0.1.fastq.gz .
+```
+
+Make copy of run_flye.sh file 
+
+```bash 
+cp run_flye.sh run_flye_bbd.sh
+```
+
+Submit job using sbatch - batch job 412 - this will take a while to run, best to check its working then leave overnight to run 
+
+```bash 
+sbatch run_flye_bbd.sh
+```
+
+
