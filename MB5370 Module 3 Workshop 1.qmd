@@ -1,19 +1,18 @@
 ---
-title: "Mb5370 Module 3 Workshop 1"
+title: "MB5370 Module 3 Workshop 1"
 author: "Caitlin Buckle"
 format: html
 editor: visual
 ---
 
-ls - tells us what is present in our current directory 
+ls - tells us what is present in our current directory
 
-cd - change directory 
+cd - change directory
 
-pwd - print working directory 
+pwd - print working directory
 
-mkdir - make a new directory 
+mkdir - make a new directory
 
 grep - finds lines matching specific strings in files in your directory (you set the specific strings)
 
-man grep - shows the flags/manual for grep 
-
+man grep - shows the flags/manual for grep
