@@ -1,0 +1,50 @@
+---
+title: "MB5370 Module 3 Workshop 3"
+author: "Caitlin Buckle"
+date: "2026-08-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this workshop we will assemble a mock metagenome consisting of five bacterial species. This metagenome has been designed to capture some of the key challenges in metagenomic assembly, including variable coverage (some species abundant, others rare - assembling rare taxa is more difficult) and similar sequences (this community contains two vibrio species - similar enough that they are difficult to separate in an assembly)
+
+Created new directory (raw_data) and a symbolic link within the directory to the raw reads file in this directory 
+```bash
+ln -s /pvol/data/metagenome_assembly/reads_R10_0.5.fastq.gz raw_reads.fastq.gz
+```
+
+Starting point - examine the read length distribution in our input data 
+
+```bash
+zcat raw_data/raw_reads.fastq.gz | head -n 40000 | bioawk -c fastx '{print $name,length($seq)}' > read_lengths.txt
+```
+Does say that there is a broken pipe - AI says this is not a problem 
+
+Create an R code chunk to visualise the read lengths 
+
+```{r}
+library(tidyverse)
+
+rl_data <- read_tsv("read_lengths.txt",col_names = c("id","length"), show_col_types = FALSE)
+
+ggplot(rl_data, aes(x=length/1000)) + 
+  geom_histogram(binwidth = 2) +
+  xlab("Read Length Kb") + ylab("Number of Reads")
+```
+
+Plot is right skewed, with most reads between 1 and 50kb in length - now going to summarise with N50 statistic (most often used to summarise genome assemblies but can also be used for summarising read length distributions). Useful as unaffected by having large numbers of tiny reads and instead places emphasis on the longer reads in the data. 
+
+```{r}
+total_len <- sum(rl_data$length) #creating new object 'total_len' and defining as the sum of the lengths within rl_data 
+
+rl_data %>% 
+  arrange(desc(length)) %>% #arrange the reads from longest to shortest
+  mutate(cumsum = cumsum(length)) %>% #create a new column with cumulative sum (cumsum) of read lengths (starting from longest as described above)
+  filter(cumsum>total_len/2) %>% #filtering the reads to find where the cumulative sum (cumsum) surpasses 50% of the total read volume (total_len) - this is the N50!
+  head(n=1)
+```
+
+N50 of individual reads = 22kb (22322bp length)

@@ -1,0 +1,348 @@
+---
+title: "MB5370 Module 3 Workshop 4"
+author: "Caitlin Buckle"
+date: "2026-08-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### This Rmd document contains the key code used to assemble the genome for black band disease (BBD). For results, please read the following report. 
+
+
+Making new directory (metabat_bbd as metabat already exists)
+
+Extracting depth (coverage) information
+
+``` bash
+cat ../flye/bbd/assembly_info.txt  | grep -v '#' | awk '{OFS="\t";print $1,$3}' > depths_bbd.txt
+```
+
+Reorder contigs based on depth
+
+``` bash
+cat depths_bbd.txt | awk '{print $1}' | xargs samtools faidx ../flye/bbd/assembly.fasta > assembly_bbd_ordered.fasta
+```
+
+Run metabat
+
+``` bash
+metabat2 -i assembly_bbd_ordered.fasta -a depths_bbd.txt --cvExt -o bins_bbd/metabat_bbd --seed 5
+```
+
+Metabat output MetaBAT 2 (nosha) using minContig 2500, minCV 1.0, minCVSum 1.0, maxP 95%, minS 60, maxEdges 200 and minClsSize 200000. with random seed=5 70 bins (40072034 bases in total) formed.
+
+Find the largest contig in the bbd assembly
+
+``` bash
+cat ../flye/bbd/assembly.fasta | bioawk -c fastx '{print length($seq),$name}' | sort -n
+```
+
+Longest contig is contig_138 (4,706,701bp)
+
+Manually add the largest contig into the bins from metabat
+
+``` bash
+mkdir bins_bbd
+cp ../metabat_bbd/bins_bbd/*.fa bins_bbd/
+samtools faidx ../flye/bbd/assembly.fasta contig_138 > bins_bbd/contig_138.fa
+```
+
+Created shell script (run_checkm_bbd.sh) inside checkm_bbd directory with the following script
+
+``` bash
+#!/bin/bash
+#SBATCH --time=60
+#SBATCH --ntasks=6 --mem=10gb
+
+echo "Starting checkm in $(pwd) at $(date)"
+
+shopt -s expand_aliases
+alias checkm='apptainer run -B /pvol/:/pvol /pvol/data/sif/checkm.sif checkm'
+
+checkm lineage_wf bins_bbd out -t 4 -x fa -f checkm_results_bbd.txt
+
+echo "Finished checkm in $(pwd) at $(date)"
+```
+
+Submit the checkm job - batch job 500
+
+``` bash
+sbatch run_checkm_bbd.sh
+```
+
+Check the results from the checkm analysis (checkm_results_bbd.tst)
+
+``` bash
+head checkm_results_bbd.txt 
+```
+
+## Bin Id Marker lineage \# genomes \# markers \# marker sets 0 1 2 3 4 5+ Completeness Contamination Strain heterogeneity
+
+metabat_bbd.29 p\_\_Cyanobacteria (UID2189) 82 579 450 9 567 3 0 0 0 98.00 0.67 0.00\
+contig_138 o\_\_Cytophagales (UID2936) 47 454 336 9 438 7 0 0 0 97.62 1.64 14.29\
+metabat_bbd.35 s\_\_algicola (UID2846) 47 571 303 263 302 6 0 0 0 53.80 0.86 0.00\
+metabat_bbd.24 c\_\_Deltaproteobacteria (UID3216) 83 247 155 150 97 0 0 0 0 35.63 0.00 0.00\
+metabat_bbd.34 k\_\_Bacteria (UID203) 5449 104 58 81 23 0 0 0 0 34.48 0.00 0.00\
+metabat_bbd.54 k\_\_Bacteria (UID3060) 138 338 246 230 108 0 0 0 0 30.28 0.00 0.00\
+metabat_bbd.39 c\_\_Deltaproteobacteria (UID3216) 83 247 155 169 77 1 0 0 0 28.18 0.13 0.00
+
+Expand to show first 20 lines
+
+``` bash
+head -n 20 checkm_results_bbd.txt 
+```
+
+## Bin Id Marker lineage \# genomes \# markers \# marker sets 0 1 2 3 4 5+ Completeness Contamination Strain heterogeneity
+
+metabat_bbd.29 p\_\_Cyanobacteria (UID2189) 82 579 450 9 567 3 0 0 0 98.00 0.67 0.00\
+contig_138 o\_\_Cytophagales (UID2936) 47 454 336 9 438 7 0 0 0 97.62 1.64 14.29\
+metabat_bbd.35 s\_\_algicola (UID2846) 47 571 303 263 302 6 0 0 0 53.80 0.86 0.00\
+metabat_bbd.24 c\_\_Deltaproteobacteria (UID3216) 83 247 155 150 97 0 0 0 0 35.63 0.00 0.00\
+metabat_bbd.34 k\_\_Bacteria (UID203) 5449 104 58 81 23 0 0 0 0 34.48 0.00 0.00\
+metabat_bbd.54 k\_\_Bacteria (UID3060) 138 338 246 230 108 0 0 0 0 30.28 0.00 0.00\
+metabat_bbd.39 c\_\_Deltaproteobacteria (UID3216) 83 247 155 169 77 1 0 0 0 28.18 0.13 0.00\
+metabat_bbd.42 o\_\_Clostridiales (UID1212) 172 263 149 198 65 0 0 0 0 22.60 0.00 0.00\
+metabat_bbd.9 k\_\_Bacteria (UID203) 5449 104 58 90 14 0 0 0 0 22.41 0.00 0.00\
+metabat_bbd.53 k\_\_Bacteria (UID203) 5449 104 58 90 14 0 0 0 0 22.41 0.00 0.00\
+metabat_bbd.17 k\_\_Bacteria (UID203) 5449 104 58 88 16 0 0 0 0 21.55 0.00 0.00\
+metabat_bbd.38 k\_\_Bacteria (UID203) 5449 102 56 87 15 0 0 0 0 21.43 0.00 0.00\
+metabat_bbd.7 k\_\_Bacteria (UID203) 5449 104 58 93 11 0 0 0 0 17.24 0.00 0.00\
+metabat_bbd.28 k\_\_Bacteria (UID3060) 138 338 246 273 65 0 0 0 0 16.07 0.00 0.00\
+metabat_bbd.64 k\_\_Bacteria (UID203) 5449 104 58 88 16 0 0 0 0 14.97 0.00 0.00\
+metabat_bbd.15 k\_\_Bacteria (UID203) 5449 104 58 91 13 0 0 0 0 14.81 0.00 0.00\
+metabat_bbd.3 c\_\_Deltaproteobacteria (UID3218) 61 284 169 239 45 0 0 0 0 14.53 0.00 0.00
+
+Extract the bins with a completeness \>15%, with only the bin ID
+
+``` bash
+cat checkm_results_bbd.txt | awk '$13>15{print $1}'
+```
+
+Results: metabat_bbd.29 contig_138 metabat_bbd.35 metabat_bbd.24 metabat_bbd.34 metabat_bbd.54 metabat_bbd.39 metabat_bbd.42 metabat_bbd.9 metabat_bbd.53 metabat_bbd.17 metabat_bbd.38 metabat_bbd.7 metabat_bbd.28
+
+Send output to file
+
+``` bash
+cat checkm_results_bbd.txt | awk '$13>15{print $1}' > bbd_topbins.txt
+```
+
+Created new directory (gtdbtk) and new subfolder (genomes) within
+
+Ititerate over our list of topbins - for each topbins we want to copy a file corresponding to that bin into our genomes folder
+
+Use echo \$bin to print the name of the bin
+
+``` bash
+while read bin;do echo $bin;done < ../checkm_bbd/bbd_topbins.txt
+```
+
+Turn the bin names into a path specifiying the fasta file for the bin - for every bin, need to prepend the path to its folder and then append the file extension (.fa)
+
+``` bash
+while read bin;do echo "../metabat_bbd/bins_bbd/${bin}.fa";done < ../checkm_bbd/bbd_topbins.txt
+```
+
+Perform the copy - need to specify to copy contig_138.fa as it wouldn't automatically
+
+``` bash
+while read bin;do cp "../metabat_bbd/bins_bbd/${bin}.fa" genomes;done < ../checkm_bbd/bbd_topbins.txt
+
+cp ../checkm_bbd/bins_bbd/contig_138.fa ../metabat_bbd/bins_bbd/
+```
+
+Create new shell file (run_gtdbtk.sh) to run the classification workflow. Submit job using sbatch - batch job 530
+
+``` bash
+sbatch run_gtdbtk.sh 
+```
+
+Finished!
+
+Annotate genes with prokka - First, run prokka on a single bin
+
+Find the first bin ID in your list - metabat_bbd.29 for me
+
+``` bash
+head -n 1 ../checkm_bbd/bbd_topbins.txt
+```
+
+``` bash
+bin=metabat_bbd.29
+prokka --outdir $bin --prefix $bin  ../metabat_bbd/bins_bbd/${bin}.fa
+```
+
+Output generated - metabat_bbd.29 folder in prokka dierctory
+
+Create new slurm file (run_prokka.sh) and submit job with sbatch - 564
+
+``` bash
+sbatch run_prokka.sh
+
+tail -f slurm-564.out
+```
+
+Using minpath - take functional info for individual genes and use this to infer the presense of broader biological pathways (involving multiple genes/steps). Run on each genome (bins) in our analysis - minpath will look at all the annoted genes and infer the minimal set of biological pathways that can explain the presence of all these genes (this is just one approach)
+
+Bins within the prokka directory contig_138 metabat_bbd.7 metabat_bbd.9 metabat_bbd.17 metabat_bbd.24 metabat_bbd.28 metabat_bbd.29 metabat_bbd.34 metabat_bbd.35 metabat_bbd.38 metabat_bbd.39 metabat_bbd.42 metabat_bbd.53 metabat_bbd.54
+
+Inputs for minpath prepared for each bin based on the prokka .tsv file
+
+metabat_bbd.7
+
+``` bash
+head ../prokka/metabat_bbd.7/metabat_bbd.7.tsv
+```
+
+Input to minpath only want a unique ID for each gene (column one), and its EC number (column five) - convert .tsv into this format using awk
+
+``` bash
+head ../prokka/metabat_bbd.7/metabat_bbd.7.tsv | awk -F '\t' '{print $1,$5}'
+```
+
+Filter the output to only include lines with an EC number - none of mine have EC number in this analysis...
+
+``` bash
+head ../prokka/metabat_bbd.7/metabat_bbd.7.tsv | awk -F '\t' '$5{print $1,$5}'
+```
+
+Ensure output is tab separated and remove the header line
+
+``` bash
+head ../prokka/metabat_bbd.7/metabat_bbd.7.tsv | awk -F '\t' '$5{OFS="\t";print $1,$5}' | grep -v '^locus'
+```
+
+Include all genes by changing head to cat
+
+``` bash
+cat ../prokka/metabat_bbd.7/metabat_bbd.7.tsv | awk -F '\t' '$5{OFS="\t";print $1,$5}' | grep -v '^locus'
+```
+
+Send output to a file so can be used as input for minpath
+
+``` bash
+cat ../prokka/metabat_bbd.7/metabat_bbd.7.tsv | awk -F '\t' '$5{OFS="\t";print $1,$5}' | grep -v '^locus' > metabat_bbd.7.ec
+```
+
+Run minpath on the metabat_bbd.7.ec file
+
+``` bash
+minpath -ec metabat_bbd.7.ec -report metabat_bbd.7.ec.report -details metabat_bbd.7.ec.details
+```
+
+Use prokka output to prepare minpath inputs for all bins
+
+``` bash
+while read bin;do 
+  cat ../prokka/$bin/${bin}.tsv | awk -F '\t' '$5{printf("%s\t%s\n", $1,$5)}' | grep -v '^locus' > ${bin}.ec 
+done < ../checkm_bbd/bbd_topbins.txt
+```
+
+Run minpath on every bin
+
+``` bash
+while read bin;do 
+  minpath -ec ${bin}.ec -report ${bin}.ec.report -details ${bin}.ec.details
+done < ../checkm_bbd/bbd_topbins.txt
+```
+
+First pathway - photosynthesis light reactions (metacyc code = PWY-101) Pathway includes the essential components of photosynthesis that occur in light, photosystem I and photosystem II.
+
+Search for PWY-101 pathway across all bins
+
+``` bash
+grep 'PWY-101' *.ec.report
+```
+
+QUESTIONS: How many bins contain at least one gene from this pathway? - 4 bins (contig_138, metabat_bbd.29, metabat_bbd.38, metabat_bbd.42)
+
+Which bin has all four genes (a complete pathway)?- fam0 4 tells us there are 4 gene families in this pathway, and metabat_bbd.29 bin has all 4 gene families found (fam-found 4).
+
+Cross reference results from minpath output with the output from gtdbtk to see the taxonomy of bins containing this pathway.
+
+``` bash
+grep 'metabat_bbd.29' ../gtdbtk/out/gtdbtk.bac120.summary.tsv
+```
+
+Output: metabat_bbd.29.ec.report:path PWY-101 any n/a naive 1 minpath 1 fam0 4 fam-found 4 name photosynthesis light reactions metabat_bbd.38.ec.report:path PWY-101 any n/a naive 1 minpath 0 fam0 4 fam-found 1 name photosynthesis light reactions metabat_bbd.42.ec.report:path PWY-101 any n/a naive 1 minpath 1 fam0 4 fam-found 1 name photosynthesis light reactions
+
+First gtdbtk analysis didn't work - resubmitted (batch job 609)
+
+``` bash
+sbatch run_gtdbtk.sh
+tail -f slurm-609.out
+```
+
+Worked the second time!
+
+Output: metabat_bbd.29 d\_\_Bacteria;p\_\_Cyanobacteria;c\_\_Cyanobacteriia;o\_\_Cyanobacteriales;f\_\_Desertifilaceae;g\_\_Roseofilum;s\_\_Roseofilum reptotaenium_A GCA_001890975.1 95.0 d\_\_Bacteria;p\_\_Cyanobacteria;c\_\_Cyanobacteriia;o\_\_Cyanobacteriales;f\_\_Desertifilaceae;g\_\_Roseofilum;s\_\_Roseofilum reptotaenium_A 96.72 0.861 GCA_001890975.1 95.0 d\_\_Bacteria;p\_\_Cyanobacteria;c\_\_Cyanobacteriia;o\_\_Cyanobacteriales;f\_\_Desertifilaceae;g\_\_Roseofilum;s\_\_Roseofilum reptotaenium_A 96.72 0.861 d\_\_Bacteria;p\_\_Cyanobacteria;c\_\_Cyanobacteriia;o\_\_Cyanobacteriales;f\_\_Desertifilaceae;g\_\_Roseofilum;s\_\_ taxonomic classification defined by topology and ANI topological placement and ANI have congruent species assignments GCA_002340255.1, s\_\_Roseofilum sp002340255, 95.0, 94.17, 0.874 90.21 11 N/A N/A
+
+Family is Desertifilaceae - output is showing the four genes within the pathway and the taxonomy for each (top three are the same, fourth is not complete \[only goes down to the genus level, not species\])
+
+When it asks how many bins contain the pathway, the answer can be argued to a degree. If it contains all genes within the pathway, then it definitely counts, but if it only contains genes from part of the pathway then you could still say that it might have the pathway, but further assembly/analysis is required to confirm whether it does infact contain the full pathway.
+
+Repeat the process for the second pathway - superpathway of tetrathionate reduction (PWY-5360). Pathway includes enzymes required to reduce sulfite to hydrogen sulfide (sulfite acts as the terminal electron receptor in this pathway, however \[in a broader sense\] refers to micro-organisms that can produce sulfide from a range of oxidised sulfur compounds).
+
+Search for PWY-5360 across all the bins
+
+``` bash
+grep 'PWY-5360' *.ec.report
+```
+
+``` bash
+grep 'metabat_bbd.54' ../gtdbtk/out/gtdbtk.bac120.summary.tsv
+```
+
+QUESTIONS:
+
+How many bins contain the pathway PWY-5360? - 1 (fam0 = 3 genes in the pathway, fam found = 1 in metabat_bbd.54)
+
+What family (in a taxonomic sense) do these bins belong to? - Family Arcobacteraceae, Genus Halarcobacter
+
+What to put into Git
+
+-   qmd and html files
+
+-   slurm scripts
+
+## Can use the command line to commit files to git (be in highest directory) - useful for .sh files as only want to commit the shell scripts, not the entire folder they are held in
+
+git status (shows you what is waiting in git)
+
+Find any files ending in .sh
+
+``` bash
+find ./ -name '*.sh'
+```
+
+Add the found files to git
+
+``` bash
+git add [insert copied paths from find command]
+```
+
+Direct command - find the files that end in .sh, and then xargs adds them all to git
+
+``` bash
+find ./ -name '*.sh' | xargs -I{} git add {} 
+```
+
+Inside prokka - folder for each metabat - inside folder a .tsv file for each 
+
+Lists all the metabats (each a directory inside the prokka directory)
+```bash 
+while read bin;do echo $bin; done< ../checkm_bbd/bbd_topbins.txt
+```
+
+To count how many proteins are in each bin 
+```bash
+while read bin;do wc -l $bin/$bin.tsv; done< ../checkm_bbd/bbd_topbins.txt
+```
+
+Count how many genes have an EC number 
+```bash 
+cat ../minpath/*.ec|wc -l
+```
+
