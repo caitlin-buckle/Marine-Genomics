@@ -1,4 +1,4 @@
-# Marine-Genomics
+# Marine Genomics
 Repo for marine genomics module, carrying out metagenome assembly of Black Band Disease (BBD) 
 
  We were provided with a subset of JCU PhD student Julia Hung's BBD metagenome sequence that she collected from _Acropora hyacynthus_ at Orpheus Island. Our analysis included classifying assembled contigs from the sequenced genome, and utilising functional analyses to highlight key genes in the microbial mat of BBD. 
